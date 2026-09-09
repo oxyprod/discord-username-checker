@@ -5,11 +5,14 @@ from typing import List
 import json
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from queue import Queue
+import threading
 
 class DiscordUsernameChecker:
-    """Search for available 4-character Discord usernames using proxy list"""
+    """Search for available 4-character Discord usernames using proxy list with threading"""
     
-    def __init__(self, proxy_file: str = None, delay: float = 0.2, timeout: int = 10):
+    def __init__(self, proxy_file: str = None, delay: float = 0.2, timeout: int = 10, max_workers: int = 5000):
         """
         Initialize the Discord username checker
         
@@ -17,6 +20,7 @@ class DiscordUsernameChecker:
             proxy_file: Path to file containing proxy list (one per line)
             delay: Delay between requests in seconds (to avoid rate limiting)
             timeout: Request timeout in seconds
+            max_workers: Number of threads to use
         """
         self.delay = delay
         self.timeout = timeout
@@ -24,6 +28,9 @@ class DiscordUsernameChecker:
         self.checked_count = 0
         self.proxy_list = []
         self.current_proxy_index = 0
+        self.max_workers = max_workers
+        self.retry_queue = Queue()
+        self.lock = threading.Lock()
         
         # Load proxies if provided
         if proxy_file:
@@ -64,8 +71,9 @@ class DiscordUsernameChecker:
         if not self.proxy_list:
             return {}
         
-        proxy = self.proxy_list[self.current_proxy_index]
-        self.current_proxy_index = (self.current_proxy_index + 1) % len(self.proxy_list)
+        with self.lock:
+            proxy = self.proxy_list[self.current_proxy_index]
+            self.current_proxy_index = (self.current_proxy_index + 1) % len(self.proxy_list)
         
         # Format proxy for requests library
         proxies = {
@@ -93,15 +101,16 @@ class DiscordUsernameChecker:
         print(f"Generated {len(usernames)} combinations to check")
         return usernames
     
-    def check_username_available(self, username: str) -> bool:
+    def check_username_available(self, username: str, retry_count: int = 0) -> tuple:
         """
         Check if a Discord username is available
         
         Args:
             username: The username to check
+            retry_count: Number of retries for this username
             
         Returns:
-            True if available, False otherwise
+            Tuple of (username, is_available)
         """
         try:
             # Discord API endpoint to check username availability
@@ -122,26 +131,25 @@ class DiscordUsernameChecker:
             # 404 means username doesn't exist (available)
             # 200 means username is taken
             if response.status_code == 404:
-                return True
+                return (username, True)
             elif response.status_code == 429:
-                # Rate limited - wait and retry
-                print("⚠ Rate limited! Waiting 60 seconds...")
-                time.sleep(60)
-                return self.check_username_available(username)
+                # Rate limited - retry
+                if retry_count < 3:
+                    time.sleep(2)
+                    return self.check_username_available(username, retry_count + 1)
             
-            return False
+            return (username, False)
             
-        except requests.exceptions.ProxyError:
-            print(f"✗ {username} - Proxy error")
-            time.sleep(2)
-            return False
-        except requests.exceptions.RequestException as e:
-            print(f"✗ {username} - Error: {e}")
-            return False
+        except requests.exceptions.RequestException:
+            # Retry on any error without showing message
+            if retry_count < 3:
+                time.sleep(1)
+                return self.check_username_available(username, retry_count + 1)
+            return (username, False)
     
     def search_available(self, limit: int = None, save_to_file: str = None):
         """
-        Search for available Discord usernames
+        Search for available Discord usernames using multithreading
         
         Args:
             limit: Maximum number of usernames to check (None = all)
@@ -154,24 +162,29 @@ class DiscordUsernameChecker:
         
         proxy_info = f"using {len(self.proxy_list)} proxies" if self.proxy_list else "without proxy"
         print(f"\nStarting search for available usernames ({proxy_info})")
-        print(f"Checking {len(usernames)} combinations...")
-        print(f"Delay: {self.delay}s per request")
+        print(f"Checking {len(usernames)} combinations with {self.max_workers} threads...")
         print("This may take a while. Press Ctrl+C to stop.\n")
         
         try:
-            for i, username in enumerate(usernames, 1):
-                self.checked_count = i
+            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                futures = {executor.submit(self.check_username_available, username): username for username in usernames}
                 
-                if self.check_username_available(username):
-                    self.available_usernames.append(username)
-                    print(f"✓ {username} - AVAILABLE [{i}/{len(usernames)}]")
-                else:
-                    print(f"✗ {username} [{i}/{len(usernames)}]")
-                
-                if i % 100 == 0:
-                    print(f"\n--- Progress: {i}/{len(usernames)} checked, {len(self.available_usernames)} available ---\n")
-                
-                time.sleep(self.delay)
+                completed = 0
+                for future in as_completed(futures):
+                    username, is_available = future.result()
+                    completed += 1
+                    
+                    with self.lock:
+                        self.checked_count = completed
+                        
+                        if is_available:
+                            self.available_usernames.append(username)
+                            print(f"✓ {username} - AVAILABLE [{completed}/{len(usernames)}]")
+                        else:
+                            print(f"✗ {username} [{completed}/{len(usernames)}]")
+                        
+                        if completed % 100 == 0:
+                            print(f"\n--- Progress: {completed}/{len(usernames)} checked, {len(self.available_usernames)} available ---\n")
         
         except KeyboardInterrupt:
             print("\n\nSearch stopped by user.")
@@ -203,10 +216,11 @@ if __name__ == "__main__":
     # Path to your proxy file
     proxy_file = r"C:\Users\colby\Downloads\discord-username-sniper-main\discord-username-sniper-main\proxies.txt"
     
-    # Example usage with proxies
+    # Example usage with 5000 threads
     checker = DiscordUsernameChecker(
         proxy_file=proxy_file,
-        delay=0.2  # 0.2 second delay between requests
+        delay=0.2,
+        max_workers=5000  # Force 5000 threads
     )
     
     # Auto check every combo
