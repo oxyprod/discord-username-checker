@@ -125,18 +125,18 @@ class DiscordUsernameChecker:
                 return True
             elif response.status_code == 429:
                 # Rate limited - wait and retry
-                print("Rate limited! Waiting 60 seconds...")
+                print("⚠ Rate limited! Waiting 60 seconds...")
                 time.sleep(60)
                 return self.check_username_available(username)
             
             return False
             
         except requests.exceptions.ProxyError:
-            print(f"Proxy error for {username}, trying next proxy...")
+            print(f"✗ {username} - Proxy error")
             time.sleep(2)
             return False
         except requests.exceptions.RequestException as e:
-            print(f"Error checking {username}: {e}")
+            print(f"✗ {username} - Error: {e}")
             return False
     
     def search_available(self, limit: int = None, save_to_file: str = None):
@@ -164,10 +164,12 @@ class DiscordUsernameChecker:
                 
                 if self.check_username_available(username):
                     self.available_usernames.append(username)
-                    print(f"✓ AVAILABLE: {username} [{i}/{len(usernames)}]")
+                    print(f"✓ {username} - AVAILABLE [{i}/{len(usernames)}]")
+                else:
+                    print(f"✗ {username} [{i}/{len(usernames)}]")
                 
                 if i % 100 == 0:
-                    print(f"Progress: {i}/{len(usernames)} checked, {len(self.available_usernames)} available")
+                    print(f"\n--- Progress: {i}/{len(usernames)} checked, {len(self.available_usernames)} available ---\n")
                 
                 time.sleep(self.delay)
         
@@ -187,7 +189,7 @@ class DiscordUsernameChecker:
         if self.available_usernames:
             print("\nAvailable usernames:")
             for username in self.available_usernames:
-                print(f"  • {username}")
+                print(f"  ✓ {username}")
             
             if save_to_file:
                 with open(save_to_file, 'w') as f:
