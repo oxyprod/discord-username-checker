@@ -9,7 +9,7 @@ from urllib3.util.retry import Retry
 class DiscordUsernameChecker:
     """Search for available 4-character Discord usernames using proxy list"""
     
-    def __init__(self, proxy_file: str = None, delay: float = 1.0, timeout: int = 10):
+    def __init__(self, proxy_file: str = None, delay: float = 0.2, timeout: int = 10):
         """
         Initialize the Discord username checker
         
@@ -75,12 +75,21 @@ class DiscordUsernameChecker:
         return proxies
     
     def generate_4char_usernames(self) -> List[str]:
-        """Generate all possible 4-character combinations"""
-        # Characters allowed in Discord usernames (alphanumeric + underscore)
-        characters = 'abcdefghijklmnopqrstuvwxyz0123456789_'
+        """Generate all possible 4-character combinations including dots"""
+        # Characters allowed in Discord usernames (alphanumeric + underscore + dot)
+        # Usernames can have up to 2 dots
+        characters = 'abcdefghijklmnopqrstuvwxyz0123456789_.'
         
         print("Generating all 4-character username combinations...")
-        usernames = [''.join(combo) for combo in itertools.product(characters, repeat=4)]
+        usernames = []
+        
+        for combo in itertools.product(characters, repeat=4):
+            username = ''.join(combo)
+            # Check if username has 0, 1, or 2 dots
+            dot_count = username.count('.')
+            if dot_count <= 2:
+                usernames.append(username)
+        
         print(f"Generated {len(usernames)} combinations to check")
         return usernames
     
@@ -146,6 +155,7 @@ class DiscordUsernameChecker:
         proxy_info = f"using {len(self.proxy_list)} proxies" if self.proxy_list else "without proxy"
         print(f"\nStarting search for available usernames ({proxy_info})")
         print(f"Checking {len(usernames)} combinations...")
+        print(f"Delay: {self.delay}s per request")
         print("This may take a while. Press Ctrl+C to stop.\n")
         
         try:
@@ -194,11 +204,8 @@ if __name__ == "__main__":
     # Example usage with proxies
     checker = DiscordUsernameChecker(
         proxy_file=proxy_file,
-        delay=2.0  # 2 second delay between requests
+        delay=0.2  # 0.2 second delay between requests
     )
     
-    # Search with a limit for testing (remove or increase for full search)
-    # checker.search_available(limit=1000, save_to_file="available_usernames.json")
-    
-    # For full search (warning: this will take a very long time)
+    # Auto check every combo
     checker.search_available(save_to_file="available_usernames.json")
