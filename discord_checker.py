@@ -3,15 +3,18 @@ import requests
 import time
 from typing import List
 import json
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 class DiscordUsernameChecker:
-    """Search for available 4-character Discord usernames"""
+    """Search for available 4-character Discord usernames using proxy list"""
     
-    def __init__(self, delay: float = 1.0, timeout: int = 10):
+    def __init__(self, proxy_file: str = None, delay: float = 1.0, timeout: int = 10):
         """
         Initialize the Discord username checker
         
         Args:
+            proxy_file: Path to file containing proxy list (one per line)
             delay: Delay between requests in seconds (to avoid rate limiting)
             timeout: Request timeout in seconds
         """
@@ -19,8 +22,58 @@ class DiscordUsernameChecker:
         self.timeout = timeout
         self.available_usernames = []
         self.checked_count = 0
-        self.session = requests.Session()
+        self.proxy_list = []
+        self.current_proxy_index = 0
         
+        # Load proxies if provided
+        if proxy_file:
+            self.load_proxies(proxy_file)
+        
+        self.session = self._create_session()
+    
+    def load_proxies(self, proxy_file: str):
+        """Load proxy list from file"""
+        try:
+            with open(proxy_file, 'r') as f:
+                self.proxy_list = [line.strip() for line in f if line.strip()]
+            print(f"Loaded {len(self.proxy_list)} proxies from {proxy_file}")
+        except FileNotFoundError:
+            print(f"Warning: Proxy file not found at {proxy_file}")
+        except Exception as e:
+            print(f"Error loading proxies: {e}")
+    
+    def _create_session(self) -> requests.Session:
+        """Create a requests session with retry strategy"""
+        session = requests.Session()
+        
+        retry_strategy = Retry(
+            total=3,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["GET"],
+            backoff_factor=1
+        )
+        
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        
+        return session
+    
+    def get_next_proxy(self) -> dict:
+        """Get next proxy from list in round-robin fashion"""
+        if not self.proxy_list:
+            return {}
+        
+        proxy = self.proxy_list[self.current_proxy_index]
+        self.current_proxy_index = (self.current_proxy_index + 1) % len(self.proxy_list)
+        
+        # Format proxy for requests library
+        proxies = {
+            'http': f'http://{proxy}' if not proxy.startswith(('http://', 'https://')) else proxy,
+            'https': f'http://{proxy}' if not proxy.startswith(('http://', 'https://')) else proxy,
+        }
+        return proxies
+    
     def generate_4char_usernames(self) -> List[str]:
         """Generate all possible 4-character combinations"""
         # Characters allowed in Discord usernames (alphanumeric + underscore)
@@ -48,7 +101,14 @@ class DiscordUsernameChecker:
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
             
-            response = self.session.get(url, headers=headers, timeout=self.timeout)
+            proxies = self.get_next_proxy()
+            
+            response = self.session.get(
+                url, 
+                headers=headers, 
+                timeout=self.timeout,
+                proxies=proxies
+            )
             
             # 404 means username doesn't exist (available)
             # 200 means username is taken
@@ -62,6 +122,10 @@ class DiscordUsernameChecker:
             
             return False
             
+        except requests.exceptions.ProxyError:
+            print(f"Proxy error for {username}, trying next proxy...")
+            time.sleep(2)
+            return False
         except requests.exceptions.RequestException as e:
             print(f"Error checking {username}: {e}")
             return False
@@ -79,7 +143,9 @@ class DiscordUsernameChecker:
         if limit:
             usernames = usernames[:limit]
         
-        print(f"\nStarting search for available usernames (checking {len(usernames)} combinations)...")
+        proxy_info = f"using {len(self.proxy_list)} proxies" if self.proxy_list else "without proxy"
+        print(f"\nStarting search for available usernames ({proxy_info})")
+        print(f"Checking {len(usernames)} combinations...")
         print("This may take a while. Press Ctrl+C to stop.\n")
         
         try:
@@ -122,8 +188,14 @@ class DiscordUsernameChecker:
 
 
 if __name__ == "__main__":
-    # Example usage
-    checker = DiscordUsernameChecker(delay=2.0)  # 2 second delay between requests
+    # Path to your proxy file
+    proxy_file = r"C:\Users\colby\Downloads\discord-username-sniper-main\discord-username-sniper-main\proxies.txt"
+    
+    # Example usage with proxies
+    checker = DiscordUsernameChecker(
+        proxy_file=proxy_file,
+        delay=2.0  # 2 second delay between requests
+    )
     
     # Search with a limit for testing (remove or increase for full search)
     # checker.search_available(limit=1000, save_to_file="available_usernames.json")
