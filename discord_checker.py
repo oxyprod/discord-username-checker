@@ -13,7 +13,7 @@ import sys
 class DiscordUsernameChecker:
     """Search for available 4-character Discord usernames using proxy list with threading"""
     
-    def __init__(self, proxy_file: str = None, delay: float = 0.2, timeout: int = 10, max_workers: int = 5000):
+    def __init__(self, proxy_file: str = None, delay: float = 0.2, timeout: int = 10, max_workers: int = 10000):
         """
         Initialize the Discord username checker
         
@@ -224,11 +224,11 @@ if __name__ == "__main__":
     # Path to your proxy file
     proxy_file = r"C:\Users\colby\Downloads\discord-username-sniper-main\discord-username-sniper-main\proxies.txt"
     
-    # Example usage with 5000 threads
+    # Example usage with 10000 threads
     checker = DiscordUsernameChecker(
         proxy_file=proxy_file,
         delay=0.2,
-        max_workers=5000  # Force 5000 threads
+        max_workers=10000  # Force 10000 threads
     )
     
     # Auto check every combo and save hits to specified location
