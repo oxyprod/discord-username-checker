@@ -147,13 +147,14 @@ class DiscordUsernameChecker:
                 return self.check_username_available(username, retry_count + 1)
             return (username, False)
     
-    def search_available(self, limit: int = None, save_to_file: str = None):
+    def search_available(self, limit: int = None, save_to_file: str = None, show_all_checks: bool = True):
         """
         Search for available Discord usernames using multithreading
         
         Args:
             limit: Maximum number of usernames to check (None = all)
             save_to_file: Optional file to save available usernames
+            show_all_checks: If True, show every username being checked; if False, only show available ones
         """
         usernames = self.generate_4char_usernames()
         
@@ -180,8 +181,8 @@ class DiscordUsernameChecker:
                         if is_available:
                             self.available_usernames.append(username)
                             print(f"✓ {username} - AVAILABLE [{completed}/{len(usernames)}]")
-                        else:
-                            print(f"✗ {username} [{completed}/{len(usernames)}]")
+                        elif show_all_checks:
+                            print(f"Checking: {username} [{completed}/{len(usernames)}]")
                         
                         if completed % 100 == 0:
                             print(f"\n--- Progress: {completed}/{len(usernames)} checked, {len(self.available_usernames)} available ---\n")
@@ -224,4 +225,5 @@ if __name__ == "__main__":
     )
     
     # Auto check every combo and save hits to specified location
-    checker.search_available(save_to_file=r"C:\Users\colby\Downloads\discord-username-sniper-main\discord-username-sniper-main\hits.txt")
+    # Set show_all_checks=True to see every username being checked
+    checker.search_available(save_to_file=r"C:\Users\colby\Downloads\discord-username-sniper-main\discord-username-sniper-main\hits.txt", show_all_checks=True)
