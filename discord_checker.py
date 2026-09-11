@@ -8,6 +8,7 @@ from urllib3.util.retry import Retry
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from queue import Queue
 import threading
+import sys
 
 class DiscordUsernameChecker:
     """Search for available 4-character Discord usernames using proxy list with threading"""
@@ -147,7 +148,7 @@ class DiscordUsernameChecker:
                 return self.check_username_available(username, retry_count + 1)
             return (username, False)
     
-    def search_available(self, limit: int = None, save_to_file: str = None, show_all_checks: bool = True):
+    def search_available(self, limit: int = None, save_to_file: str = None, show_all_checks: bool = False):
         """
         Search for available Discord usernames using multithreading
         
@@ -171,9 +172,13 @@ class DiscordUsernameChecker:
                 futures = {executor.submit(self.check_username_available, username): username for username in usernames}
                 
                 completed = 0
+                start_time = time.time()
+                
                 for future in as_completed(futures):
                     username, is_available = future.result()
                     completed += 1
+                    elapsed = time.time() - start_time
+                    rate = completed / elapsed if elapsed > 0 else 0
                     
                     with self.lock:
                         self.checked_count = completed
@@ -181,11 +186,13 @@ class DiscordUsernameChecker:
                         if is_available:
                             self.available_usernames.append(username)
                             print(f"✓ {username} - AVAILABLE [{completed}/{len(usernames)}]")
-                        elif show_all_checks:
-                            print(f"Checking: {username} [{completed}/{len(usernames)}]")
                         
-                        if completed % 100 == 0:
-                            print(f"\n--- Progress: {completed}/{len(usernames)} checked, {len(self.available_usernames)} available ---\n")
+                        # Show progress every 50 checks with real stats
+                        if completed % 50 == 0:
+                            percent = 100 * completed / len(usernames)
+                            eta_remaining = (len(usernames) - completed) / rate if rate > 0 else 0
+                            print(f"[{completed}/{len(usernames)} ({percent:.1f}%)] - Rate: {rate:.1f} checks/sec - Found: {len(self.available_usernames)} available - ETA: {eta_remaining:.0f}s")
+                            sys.stdout.flush()
         
         except KeyboardInterrupt:
             print("\n\nSearch stopped by user.")
@@ -225,5 +232,5 @@ if __name__ == "__main__":
     )
     
     # Auto check every combo and save hits to specified location
-    # Set show_all_checks=True to see every username being checked
-    checker.search_available(save_to_file=r"C:\Users\colby\Downloads\discord-username-sniper-main\discord-username-sniper-main\hits.txt", show_all_checks=True)
+    # Set show_all_checks=False to only see available usernames and progress updates
+    checker.search_available(save_to_file=r"C:\Users\colby\Downloads\discord-username-sniper-main\discord-username-sniper-main\hits.txt", show_all_checks=False)
