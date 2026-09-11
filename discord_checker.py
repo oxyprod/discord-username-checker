@@ -223,5 +223,5 @@ if __name__ == "__main__":
         max_workers=5000  # Force 5000 threads
     )
     
-    # Auto check every combo
-    checker.search_available(save_to_file="available_usernames.json")
+    # Auto check every combo and save hits to specified location
+    checker.search_available(save_to_file=r"C:\Users\colby\Downloads\discord-username-sniper-main\discord-username-sniper-main\hits.txt")
